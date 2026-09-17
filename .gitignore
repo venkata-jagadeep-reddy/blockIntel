@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+.python-version
+
+# Build / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+wheels/
+.Python
+pip-wheel-metadata/
+
+# Environment / secrets
+.env
+.env.*
+*.pem
+*.key
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data / generated content
+coverage/
+htmlcov/
+.data/
+*.sqlite3
+*.db
+
+# Local artifacts
+tmp/
+temp/
+
+# Tesseract local binaries (if copied in)
+opt/tesseract/
