@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+export LD_LIBRARY_PATH="/home/jagadeep-reddy/blockintel/opt/tesseract/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
+export TESSDATA_PREFIX="/home/jagadeep-reddy/blockintel/opt/tesseract/usr/share/tesseract-ocr/5/tessdata"
+exec /home/jagadeep-reddy/blockintel/opt/tesseract/usr/bin/tesseract "$@"
