@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from blockintel.api.deps import get_db
+from blockintel.api.deps import get_db, require_admin
 from blockintel.domain.blockchain import (
     BlockchainRegistrationResponse,
     IntegrityVerificationResponse,
@@ -18,7 +18,7 @@ service = BlockchainService()
 @router.post(
     "/verify-document",
     response_model=UniversalVerificationResponse,
-    summary="Universal document presence and tamper verification across all documents in database"
+    summary="Universal document presence and tamper verification across all documents in database [Public]"
 )
 async def verify_universal_document(
     file: UploadFile = File(..., description="Document file (PDF, PNG, JPEG) to check against all stored documents"),
@@ -33,8 +33,12 @@ async def verify_universal_document(
 
 
 
-@router.post("/{credential_id}/register", response_model=BlockchainRegistrationResponse)
-async def register_credential_hash(credential_id: str, db: AsyncSession = Depends(get_db)):
+@router.post("/{credential_id}/register", response_model=BlockchainRegistrationResponse, summary="Register credential hash [Admin Only]")
+async def register_credential_hash(
+    credential_id: str,
+    db: AsyncSession = Depends(get_db),
+    _admin: dict = Depends(require_admin),
+):
     record = await service.register_hash(credential_id, db)
     credential = await service.get_credential(credential_id, db)
     return BlockchainRegistrationResponse(
@@ -44,8 +48,12 @@ async def register_credential_hash(credential_id: str, db: AsyncSession = Depend
     )
 
 
-@router.get("/{credential_id}/registration", response_model=BlockchainRegistrationResponse)
-async def get_registration(credential_id: str, db: AsyncSession = Depends(get_db)):
+@router.get("/{credential_id}/registration", response_model=BlockchainRegistrationResponse, summary="Get registration [Admin Only]")
+async def get_registration(
+    credential_id: str,
+    db: AsyncSession = Depends(get_db),
+    _admin: dict = Depends(require_admin),
+):
     credential = await service.get_credential(credential_id, db)
     record = await service.get_record(credential_id, db)
     return BlockchainRegistrationResponse(
@@ -57,11 +65,12 @@ async def get_registration(credential_id: str, db: AsyncSession = Depends(get_db
     )
 
 
-@router.post("/{credential_id}/verify", response_model=IntegrityVerificationResponse)
+@router.post("/{credential_id}/verify", response_model=IntegrityVerificationResponse, summary="Verify credential file [Admin Only]")
 async def verify_credential_file(
     credential_id: str,
     file: UploadFile = File(..., description="Credential file to compare to the registered original bytes"),
     db: AsyncSession = Depends(get_db),
+    _admin: dict = Depends(require_admin),
 ):
     submitted_hash, registered_hash, hash_match, integrity_status = await service.verify_hash(credential_id, await file.read(), db)
     return IntegrityVerificationResponse(

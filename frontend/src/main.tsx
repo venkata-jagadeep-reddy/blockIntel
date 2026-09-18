@@ -8,6 +8,8 @@ import type {
   IntegrityVerificationResponse,
   UniversalVerificationResponse,
   Skill,
+  AuthUser,
+  AuthTokenResponse,
 } from "./types";
 import "./styles.css";
 
@@ -194,6 +196,43 @@ function Icon({ name, size = 16, className = "" }: { name: string; size?: number
           <polyline points="6 9 12 15 18 9" />
         </svg>
       );
+    case "lock":
+      return (
+        <svg {...props}>
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+        </svg>
+      );
+    case "unlock":
+      return (
+        <svg {...props}>
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+          <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+        </svg>
+      );
+    case "user":
+      return (
+        <svg {...props}>
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+          <circle cx="12" cy="7" r="4" />
+        </svg>
+      );
+    case "log-out":
+      return (
+        <svg {...props}>
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+          <polyline points="16 17 21 12 16 7" />
+          <line x1="21" y1="12" x2="9" y2="12" />
+        </svg>
+      );
+    case "key":
+      return (
+        <svg {...props}>
+          <circle cx="7.5" cy="15.5" r="5.5" />
+          <path d="m21 2-9.6 9.6" />
+          <path d="m15.5 7.5 3 3" />
+        </svg>
+      );
     default:
       return (
         <svg {...props}>
@@ -329,10 +368,26 @@ function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) 
 // Main React Application
 // ==========================================
 export function App() {
+  // Authentication & Authorization state
+  const [authToken, setAuthToken] = useState<string>(() => localStorage.getItem("blockintel_token") || "");
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => {
+    const saved = localStorage.getItem("blockintel_user");
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [authUsername, setAuthUsername] = useState<string>("admin@blockintel.com");
+  const [authPassword, setAuthPassword] = useState<string>("");
+  const [authLoading, setAuthLoading] = useState<boolean>(false);
+  const [authError, setAuthError] = useState<string>("");
+  const [authSuccessMsg, setAuthSuccessMsg] = useState<string>("");
+
   const [credentialsList, setCredentialsList] = useState<CredentialListItem[]>([]);
   const [selectedCredentialId, setSelectedCredentialId] = useState<string>("");
   const [result, setResult] = useState<IntelligenceResult | null>(null);
-  const [activeTab, setActiveTab] = useState<string>("overview");
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    const token = localStorage.getItem("blockintel_token");
+    return token ? "overview" : "check-document";
+  });
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [generalError, setGeneralError] = useState<string>("");
 
@@ -344,7 +399,7 @@ export function App() {
   const [uploadError, setUploadError] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Universal Document & Tamper Verifier state
+  // Universal Document & Tamper Verifier state (Public)
   const [universalFile, setUniversalFile] = useState<File | null>(null);
   const [universalResult, setUniversalResult] = useState<UniversalVerificationResponse | null>(null);
   const [isUniversalVerifying, setIsUniversalVerifying] = useState<boolean>(false);
@@ -353,7 +408,7 @@ export function App() {
   const universalInputRef = useRef<HTMLInputElement>(null);
   const checkDocInputRef = useRef<HTMLInputElement>(null);
 
-  // Deletion modal & action state
+  // Deletion modal & action state (Admin only)
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState<boolean>(false);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
   const [deleteError, setDeleteError] = useState<string>("");
@@ -368,31 +423,126 @@ export function App() {
   const [selectedSkillCategory, setSelectedSkillCategory] = useState<string>("All");
   const [docSearch, setDocSearch] = useState<string>("");
 
-  // Fetch credential list on mount
-  const fetchCredentials = async () => {
+  // Logout handler
+  const handleLogout = (msg?: string) => {
+    setAuthToken("");
+    setCurrentUser(null);
+    localStorage.removeItem("blockintel_token");
+    localStorage.removeItem("blockintel_user");
+    setCredentialsList([]);
+    setSelectedCredentialId("");
+    setResult(null);
+    setActiveTab("check-document");
+    if (msg) {
+      setGeneralError(msg);
+      setTimeout(() => setGeneralError(""), 5000);
+    }
+  };
+
+  // Login handler
+  const handleLogin = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!authUsername || !authPassword) {
+      setAuthError("Please enter both administrator username and password.");
+      return;
+    }
+    setAuthLoading(true);
+    setAuthError("");
     try {
-      const res = await fetch(`${API_BASE}/credentials`);
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: authUsername.trim(), password: authPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || "Authentication failed. Invalid username or password.");
+      }
+      setAuthToken(data.access_token);
+      setCurrentUser(data.user);
+      localStorage.setItem("blockintel_token", data.access_token);
+      localStorage.setItem("blockintel_user", JSON.stringify(data.user));
+      setIsAuthModalOpen(false);
+      setAuthPassword("");
+      setAuthSuccessMsg("Administrator session authenticated successfully.");
+      setTimeout(() => setAuthSuccessMsg(""), 4000);
+
+      // Load repository credentials
+      fetchCredentials(data.access_token);
+      setActiveTab("overview");
+    } catch (err: any) {
+      setAuthError(err.message || "Failed to sign in as Administrator.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // Quick fill demo credentials
+  const handleQuickFillDemo = () => {
+    setAuthUsername("admin@blockintel.com");
+    setAuthPassword("Admin@BlockIntel2026!");
+    setAuthError("");
+  };
+
+  // Tab click gatekeeper
+  const handleTabClick = (tabKey: string) => {
+    if (tabKey === "check-document" || tabKey === "auth") {
+      setActiveTab(tabKey);
+      return;
+    }
+    // All repository exploration tabs require Administrator authentication
+    if (!authToken) {
+      setIsAuthModalOpen(true);
+      setAuthError("Administrator authentication required to access repository records.");
+      return;
+    }
+    setActiveTab(tabKey);
+  };
+
+  // Fetch credential list for Admin
+  const fetchCredentials = async (overrideToken?: string) => {
+    const token = overrideToken !== undefined ? overrideToken : authToken;
+    if (!token) {
+      setCredentialsList([]);
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/credentials`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.status === 401) {
+        handleLogout("Session expired. Please sign in again.");
+        return;
+      }
       if (!res.ok) throw new Error("Could not fetch credentials list from API.");
       const data = await res.json();
       const items: CredentialListItem[] = data.items || [];
       setCredentialsList(items);
 
-      // Auto-select first credential if available and none currently selected
+      // Auto-select first credential if none selected
       if (items.length > 0 && !selectedCredentialId) {
         const best = items.find((c) => c.status === "COMPLETED") || items[0];
-        loadCredential(best.credential_id);
+        loadCredential(best.credential_id, token);
       }
     } catch (err: any) {
-      setGeneralError("API backend is not reachable. Ensure uvicorn is running on http://127.0.0.1:8000.");
+      setGeneralError("API backend notice: " + (err.message || "Connection error"));
     }
   };
 
   useEffect(() => {
-    fetchCredentials();
-  }, []);
+    if (authToken) {
+      fetchCredentials();
+    }
+  }, [authToken]);
 
-  // Load a specific credential and ensure metadata & structure are complete
-  const loadCredential = async (credentialId: string) => {
+  // Load a specific credential (Admin Only)
+  const loadCredential = async (credentialId: string, overrideToken?: string) => {
+    const token = overrideToken !== undefined ? overrideToken : authToken;
+    if (!token) {
+      setIsAuthModalOpen(true);
+      setAuthError("Administrator privileges required to inspect repository records.");
+      return;
+    }
     setIsLoading(true);
     setGeneralError("");
     setSelectedCredentialId(credentialId);
@@ -403,16 +553,23 @@ export function App() {
     try {
       const res = await fetch(`${API_BASE}/credentials/${credentialId}/complete`, {
         method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
       });
+      if (res.status === 401) {
+        handleLogout("Admin authorization expired. Please sign in again.");
+        return;
+      }
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.message || data.error || `Failed to analyze credential ${credentialId}`);
+        throw new Error(data.message || data.error || data.detail || `Failed to analyze credential ${credentialId}`);
       }
 
       // If metadata is null or missing on data, query /metadata endpoint as a reliable fallback
       if (!data.metadata) {
         try {
-          const metaRes = await fetch(`${API_BASE}/credentials/${credentialId}/metadata`);
+          const metaRes = await fetch(`${API_BASE}/credentials/${credentialId}/metadata`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
           if (metaRes.ok) {
             const metaJson = await metaRes.json();
             data.metadata = metaJson.metadata;
@@ -431,9 +588,14 @@ export function App() {
     }
   };
 
-  // Upload a new credential file to real backend
+  // Upload a new credential file (Admin Only)
   const handleUploadFile = async () => {
     if (!uploadFile) return;
+    if (!authToken) {
+      setIsAuthModalOpen(true);
+      setAuthError("Administrator sign-in required to ingest official documents.");
+      return;
+    }
     setUploadState("uploading");
     setUploadError("");
 
@@ -444,11 +606,16 @@ export function App() {
 
       const uploadRes = await fetch(`${API_BASE}/credentials/upload`, {
         method: "POST",
+        headers: { Authorization: `Bearer ${authToken}` },
         body: formData,
       });
+      if (uploadRes.status === 401) {
+        handleLogout("Admin session expired. Please sign in again.");
+        return;
+      }
       const uploadData = await uploadRes.json();
       if (!uploadRes.ok) {
-        throw new Error(uploadData.message || uploadData.error || "Upload failed.");
+        throw new Error(uploadData.message || uploadData.error || uploadData.detail || "Upload failed.");
       }
 
       const newId = uploadData.credential_id;
@@ -456,16 +623,19 @@ export function App() {
 
       const completeRes = await fetch(`${API_BASE}/credentials/${newId}/complete`, {
         method: "POST",
+        headers: { Authorization: `Bearer ${authToken}` },
       });
       const completeData = await completeRes.json();
       if (!completeRes.ok) {
-        throw new Error(completeData.message || completeData.error || "Analysis failed.");
+        throw new Error(completeData.message || completeData.error || completeData.detail || "Analysis failed.");
       }
 
       // If metadata is null, query /metadata endpoint
       if (!completeData.metadata) {
         try {
-          const metaRes = await fetch(`${API_BASE}/credentials/${newId}/metadata`);
+          const metaRes = await fetch(`${API_BASE}/credentials/${newId}/metadata`, {
+            headers: { Authorization: `Bearer ${authToken}` },
+          });
           if (metaRes.ok) {
             const metaJson = await metaRes.json();
             completeData.metadata = metaJson.metadata;
@@ -485,14 +655,14 @@ export function App() {
       setActiveTab("overview");
 
       // Refresh list
-      fetchCredentials();
+      fetchCredentials(authToken);
     } catch (err: any) {
       setUploadError(err.message || "An error occurred during upload.");
       setUploadState("error");
     }
   };
 
-  // Pre-upload document check when selecting a file in the Upload Modal
+  // Pre-upload document check when selecting a file in the Upload Modal (Public endpoint)
   const handleSelectUploadFile = async (file?: File) => {
     if (!file) return;
     setUploadFile(file);
@@ -519,7 +689,7 @@ export function App() {
     }
   };
 
-  // Universal document verification across ALL documents in database
+  // Universal document verification across ALL documents in database (Public endpoint)
   const handleRunUniversalVerify = async (file?: File) => {
     if (!file) return;
     setUniversalFile(file);
@@ -547,19 +717,29 @@ export function App() {
     }
   };
 
-  // Delete credential and cascade child records
+  // Delete credential and cascade child records (Admin Only)
   const handleDeleteCredential = async (targetId: string) => {
     if (!targetId) return;
+    if (!authToken) {
+      setIsAuthModalOpen(true);
+      setAuthError("Administrator privileges required to delete records.");
+      return;
+    }
     setIsDeleting(true);
     setDeleteError("");
 
     try {
       const res = await fetch(`${API_BASE}/credentials/${targetId}`, {
         method: "DELETE",
+        headers: { Authorization: `Bearer ${authToken}` },
       });
+      if (res.status === 401) {
+        handleLogout("Admin session expired. Please sign in again.");
+        return;
+      }
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.message || data.error || "Failed to delete document.");
+        throw new Error(data.message || data.error || data.detail || "Failed to delete document.");
       }
 
       setIsDeleteModalOpen(false);
@@ -567,7 +747,9 @@ export function App() {
       setTimeout(() => setDeleteSuccessMsg(""), 4000);
 
       // Refresh list
-      const listRes = await fetch(`${API_BASE}/credentials`);
+      const listRes = await fetch(`${API_BASE}/credentials`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
       const listData = await listRes.json();
       const updatedItems: CredentialListItem[] = listData.items || [];
       setCredentialsList(updatedItems);
@@ -575,7 +757,7 @@ export function App() {
       // If deleted active credential, switch to next or empty
       if (selectedCredentialId === targetId) {
         if (updatedItems.length > 0) {
-          loadCredential(updatedItems[0].credential_id);
+          loadCredential(updatedItems[0].credential_id, authToken);
         } else {
           setSelectedCredentialId("");
           setResult(null);
@@ -645,48 +827,70 @@ export function App() {
           </div>
         </div>
 
-        {/* Stored Credentials Selector */}
+        {/* Stored Credentials Selector (Admin Only) */}
         <div className="sidebar-credential-selector">
-          <span className="selector-title">SELECT INGESTED CREDENTIAL</span>
-          {credentialsList.length === 0 ? (
-            <div className="no-credentials-text">No credentials in database</div>
+          {authToken ? (
+            <>
+              <div className="selector-title-row">
+                <span className="selector-title">SELECT INGESTED CREDENTIAL</span>
+                <span className="nav-tag green">Admin</span>
+              </div>
+              {credentialsList.length === 0 ? (
+                <div className="no-credentials-text">No credentials in database</div>
+              ) : (
+                <select
+                  className="credential-dropdown"
+                  value={selectedCredentialId}
+                  onChange={(e) => loadCredential(e.target.value)}
+                  disabled={isLoading}
+                >
+                  {credentialsList.map((c) => (
+                    <option key={c.credential_id} value={c.credential_id}>
+                      {c.original_filename} ({c.credential_id.slice(-6)})
+                    </option>
+                  ))}
+                </select>
+              )}
+              {result && (
+                <button
+                  className="btn-ghost-danger"
+                  onClick={() => {
+                    setDeleteError("");
+                    setIsDeleteModalOpen(true);
+                  }}
+                  title="Delete this credential permanently"
+                >
+                  <Icon name="trash" size={13} />
+                  <span>Delete Current Document</span>
+                </button>
+              )}
+              <button className="btn btn-upload-sidebar" onClick={() => setIsUploadModalOpen(true)}>
+                <Icon name="upload-cloud" size={14} />
+                <span>Upload New Credential</span>
+              </button>
+            </>
           ) : (
-            <select
-              className="credential-dropdown"
-              value={selectedCredentialId}
-              onChange={(e) => loadCredential(e.target.value)}
-              disabled={isLoading}
-            >
-              {credentialsList.map((c) => (
-                <option key={c.credential_id} value={c.credential_id}>
-                  {c.original_filename} ({c.credential_id.slice(-6)})
-                </option>
-              ))}
-            </select>
+            <div className="sidebar-auth-gate-card">
+              <div className="auth-gate-pill">
+                <Icon name="lock" size={12} />
+                <span>DATABASE LOCKED</span>
+              </div>
+              <p className="auth-gate-msg">
+                Direct repository browsing is restricted. Sign in as Admin to access stored files.
+              </p>
+              <button className="btn btn-primary btn-sm btn-full" onClick={() => setIsAuthModalOpen(true)}>
+                <Icon name="lock" size={13} />
+                <span>Admin Sign In</span>
+              </button>
+            </div>
           )}
-          {result && (
-            <button
-              className="btn-ghost-danger"
-              onClick={() => {
-                setDeleteError("");
-                setIsDeleteModalOpen(true);
-              }}
-              title="Delete this credential permanently"
-            >
-              <Icon name="trash" size={13} />
-              <span>Delete Current Document</span>
-            </button>
-          )}
-          <button className="btn btn-upload-sidebar" onClick={() => setIsUploadModalOpen(true)}>
-            <Icon name="upload-cloud" size={14} />
-            <span>Upload New Credential</span>
-          </button>
+
           <button
             className={`btn btn-verify-sidebar ${activeTab === "check-document" ? "active" : ""}`}
             onClick={() => setActiveTab("check-document")}
           >
             <Icon name="shield-check" size={14} />
-            <span>Check Document (Tamper Test)</span>
+            <span>Check Document (Public)</span>
           </button>
         </div>
 
@@ -697,75 +901,100 @@ export function App() {
           >
             <Icon name="shield-check" size={17} />
             <span>Check Document</span>
-            <span className="nav-tag green">Scanner</span>
+            <span className="nav-tag green">Public Verifier</span>
           </button>
           <button
-            className={`nav-item ${activeTab === "overview" ? "active" : ""}`}
-            onClick={() => setActiveTab("overview")}
+            className={`nav-item ${activeTab === "overview" ? "active" : ""} ${!authToken ? "locked" : ""}`}
+            onClick={() => handleTabClick("overview")}
           >
-            <Icon name="layers" size={17} />
+            <Icon name={authToken ? "layers" : "lock"} size={17} />
             <span>Executive Overview</span>
+            {!authToken && <span className="nav-tag lock-tag">Admin</span>}
           </button>
           <button
-            className={`nav-item ${activeTab === "authenticity" ? "active" : ""}`}
-            onClick={() => setActiveTab("authenticity")}
+            className={`nav-item ${activeTab === "authenticity" ? "active" : ""} ${!authToken ? "locked" : ""}`}
+            onClick={() => handleTabClick("authenticity")}
           >
-            <Icon name="shield-alert" size={17} />
+            <Icon name={authToken ? "shield-alert" : "lock"} size={17} />
             <span>Authenticity Risk</span>
-            {result && (
+            {authToken && result ? (
               <span className={`nav-counter ${riskTone}`}>
                 {result.authenticity_risk.signals.length}
               </span>
+            ) : (
+              !authToken && <span className="nav-tag lock-tag">Admin</span>
             )}
           </button>
           <button
-            className={`nav-item ${activeTab === "integrity" ? "active" : ""}`}
-            onClick={() => setActiveTab("integrity")}
+            className={`nav-item ${activeTab === "integrity" ? "active" : ""} ${!authToken ? "locked" : ""}`}
+            onClick={() => handleTabClick("integrity")}
           >
-            <Icon name="database" size={17} />
+            <Icon name={authToken ? "database" : "lock"} size={17} />
             <span>Blockchain Integrity</span>
-            {result && (
+            {authToken && result ? (
               <span className={`nav-tag ${result.integrity.integrity_status === "MATCH" ? "green" : "red"}`}>
                 {result.integrity.integrity_status}
               </span>
+            ) : (
+              !authToken && <span className="nav-tag lock-tag">Admin</span>
             )}
           </button>
           <button
-            className={`nav-item ${activeTab === "document" ? "active" : ""}`}
-            onClick={() => setActiveTab("document")}
+            className={`nav-item ${activeTab === "document" ? "active" : ""} ${!authToken ? "locked" : ""}`}
+            onClick={() => handleTabClick("document")}
           >
-            <Icon name="file-text" size={17} />
+            <Icon name={authToken ? "file-text" : "lock"} size={17} />
             <span>Document & OCR</span>
+            {!authToken && <span className="nav-tag lock-tag">Admin</span>}
           </button>
           <button
-            className={`nav-item ${activeTab === "metadata" ? "active" : ""}`}
-            onClick={() => setActiveTab("metadata")}
+            className={`nav-item ${activeTab === "metadata" ? "active" : ""} ${!authToken ? "locked" : ""}`}
+            onClick={() => handleTabClick("metadata")}
           >
-            <Icon name="cpu" size={17} />
+            <Icon name={authToken ? "cpu" : "lock"} size={17} />
             <span>Metadata & Layout</span>
-            {result?.metadata && <span className="nav-counter neutral">Active</span>}
+            {authToken && result?.metadata ? (
+              <span className="nav-counter neutral">Active</span>
+            ) : (
+              !authToken && <span className="nav-tag lock-tag">Admin</span>
+            )}
           </button>
           <button
-            className={`nav-item ${activeTab === "skills" ? "active" : ""}`}
-            onClick={() => setActiveTab("skills")}
+            className={`nav-item ${activeTab === "skills" ? "active" : ""} ${!authToken ? "locked" : ""}`}
+            onClick={() => handleTabClick("skills")}
           >
-            <Icon name="award" size={17} />
+            <Icon name={authToken ? "award" : "lock"} size={17} />
             <span>Skill Intelligence</span>
-            {result && <span className="nav-counter neutral">{result.skills.length}</span>}
+            {authToken && result ? (
+              <span className="nav-counter neutral">{result.skills.length}</span>
+            ) : (
+              !authToken && <span className="nav-tag lock-tag">Admin</span>
+            )}
           </button>
           <button
-            className={`nav-item ${activeTab === "json" ? "active" : ""}`}
-            onClick={() => setActiveTab("json")}
+            className={`nav-item ${activeTab === "json" ? "active" : ""} ${!authToken ? "locked" : ""}`}
+            onClick={() => handleTabClick("json")}
           >
-            <Icon name="code" size={17} />
+            <Icon name={authToken ? "code" : "lock"} size={17} />
             <span>Raw Response JSON</span>
+            {!authToken && <span className="nav-tag lock-tag">Admin</span>}
+          </button>
+          <button
+            className={`nav-item ${activeTab === "auth" ? "active" : ""}`}
+            onClick={() => setActiveTab("auth")}
+          >
+            <Icon name={authToken ? "shield-check" : "user"} size={17} />
+            <span>Admin & Access Control</span>
+            <span className={`nav-tag ${authToken ? "green" : "blue"}`}>
+              {authToken ? "Active" : "Sign In"}
+            </span>
           </button>
         </nav>
 
         <div className="sidebar-footer">
           <div className="footer-card">
-            <span className="phase-chip">PHASE 1 ENGINE</span>
-            <p>100% Live Backend Integration · Exact-byte SHA-256 · Local Dev Ledger Provider</p>
+            <span className="phase-chip">{authToken ? "ADMIN CONSOLE" : "PUBLIC VERIFIER"}</span>
+            <p>100% Cryptographic Tamper Verification · RBAC Protected Repository</p>
           </div>
         </div>
       </aside>
@@ -784,6 +1013,11 @@ export function App() {
                   <span className="slash">/</span>
                   <strong>Universal Document Scanner</strong>
                 </>
+              ) : activeTab === "auth" ? (
+                <>
+                  <span className="slash">/</span>
+                  <strong>Authentication & Authorization</strong>
+                </>
               ) : result ? (
                 <>
                   <span className="slash">/</span>
@@ -794,6 +1028,8 @@ export function App() {
             <h1 className="header-title">
               {activeTab === "check-document"
                 ? "Check Document Presence & Tamper Detection"
+                : activeTab === "auth"
+                ? "Administrator Authentication & Access Control"
                 : result
                 ? result.credential.original_filename
                 : "Select or Upload a Credential"}
@@ -801,6 +1037,35 @@ export function App() {
           </div>
 
           <div className="header-actions">
+            {authToken ? (
+              <div className="admin-status-pill">
+                <span className="admin-avatar">
+                  <Icon name="shield-check" size={13} />
+                </span>
+                <div className="admin-status-info">
+                  <span className="admin-role-label">ADMIN</span>
+                  <span className="admin-email-text">{currentUser?.username || "admin@blockintel.com"}</span>
+                </div>
+                <button
+                  className="btn btn-ghost-sm"
+                  onClick={() => handleLogout("Signed out of Administrator session.")}
+                  title="Sign out of Administrator mode"
+                >
+                  <Icon name="log-out" size={13} />
+                  <span>Sign Out</span>
+                </button>
+              </div>
+            ) : (
+              <div className="public-verifier-pill">
+                <span className="public-dot" />
+                <span>Public Verifier</span>
+                <button className="btn btn-primary btn-sm" onClick={() => setIsAuthModalOpen(true)}>
+                  <Icon name="lock" size={13} />
+                  <span>Admin Sign In</span>
+                </button>
+              </div>
+            )}
+
             <button
               className={`btn ${activeTab === "check-document" ? "btn-primary" : "btn-secondary"}`}
               onClick={() => setActiveTab("check-document")}
@@ -808,11 +1073,15 @@ export function App() {
               <Icon name="shield-check" size={15} />
               <span>Check Document Scanner</span>
             </button>
-            <button className="btn btn-primary" onClick={() => setIsUploadModalOpen(true)}>
-              <Icon name="upload-cloud" size={15} />
-              <span>Upload Credential</span>
-            </button>
-            {result && activeTab !== "check-document" && (
+
+            {authToken && (
+              <button className="btn btn-primary" onClick={() => setIsUploadModalOpen(true)}>
+                <Icon name="upload-cloud" size={15} />
+                <span>Upload Credential</span>
+              </button>
+            )}
+
+            {authToken && result && activeTab !== "check-document" && activeTab !== "auth" && (
               <>
                 <button className="btn btn-secondary" onClick={() => window.print()}>
                   <Icon name="download" size={15} />
@@ -875,7 +1144,7 @@ export function App() {
               <div className="check-doc-hero-pills">
                 <span className="hero-pill">
                   <Icon name="database" size={13} />
-                  <span>{credentialsList.length} Stored Records Scanned</span>
+                  <span>{authToken ? `${credentialsList.length} Stored Records Scanned` : "Protected Registry Scanned"}</span>
                 </span>
                 <span className="hero-pill">
                   <Icon name="shield-check" size={13} />
@@ -965,7 +1234,9 @@ export function App() {
                 <div className="verifier-calculating">
                   <span className="spinner" />
                   <span>
-                    Computing exact SHA-256 digest & cross-matching across all {credentialsList.length} database credentials...
+                    {authToken
+                      ? `Computing exact SHA-256 digest & cross-matching across all ${credentialsList.length} database credentials...`
+                      : "Computing exact SHA-256 digest & cross-matching against database registry..."}
                   </span>
                 </div>
               )}
@@ -1002,12 +1273,17 @@ export function App() {
                       <button
                         className="btn btn-primary btn-sm"
                         onClick={() => {
+                          if (!authToken) {
+                            setIsAuthModalOpen(true);
+                            setAuthError("Administrator privileges required to inspect repository dossiers.");
+                            return;
+                          }
                           loadCredential(universalResult.matched_credential_id!);
                           setActiveTab("overview");
                         }}
                       >
-                        <span>Open Document Intelligence Dossier</span>
-                        <Icon name="external-link" size={13} />
+                        <Icon name={authToken ? "external-link" : "lock"} size={13} />
+                        <span>{authToken ? "Open Document Intelligence Dossier" : "Admin Sign In to Open Dossier"}</span>
                       </button>
                     )}
                   </div>
@@ -1103,23 +1379,33 @@ export function App() {
                       <button
                         className="btn btn-primary"
                         onClick={() => {
+                          if (!authToken) {
+                            setIsAuthModalOpen(true);
+                            setAuthError("Administrator privileges required to inspect repository dossiers.");
+                            return;
+                          }
                           loadCredential(universalResult.matched_credential_id!);
                           setActiveTab("overview");
                         }}
                       >
-                        <Icon name="layers" size={14} />
-                        <span>Inspect Matched Credential Dossier</span>
+                        <Icon name={authToken ? "layers" : "lock"} size={14} />
+                        <span>{authToken ? "Inspect Matched Credential Dossier" : "Admin Sign In to Inspect Dossier"}</span>
                       </button>
                     )}
                     {(!universalResult.is_present || universalResult.verdict === "TAMPERED") && (
                       <button
                         className="btn btn-secondary"
                         onClick={() => {
+                          if (!authToken) {
+                            setIsAuthModalOpen(true);
+                            setAuthError("Administrator privileges required to ingest credentials into the database.");
+                            return;
+                          }
                           setUploadFile(universalFile);
                           setIsUploadModalOpen(true);
                         }}
                       >
-                        <Icon name="upload-cloud" size={14} />
+                        <Icon name={authToken ? "upload-cloud" : "lock"} size={14} />
                         <span>
                           {universalResult.verdict === "TAMPERED"
                             ? "Ingest Tampered Copy as Separate Record"
@@ -1725,7 +2011,7 @@ export function App() {
                       </div>
                       <div className="doc-preview-header-right">
                         <a
-                          href={`${API_BASE}/credentials/${result.credential.credential_id}/file`}
+                          href={`${API_BASE}/credentials/${result.credential.credential_id}/file${authToken ? `?token=${encodeURIComponent(authToken)}` : ""}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="btn btn-sm btn-outline"
@@ -1735,7 +2021,7 @@ export function App() {
                           <span>Popout</span>
                         </a>
                         <a
-                          href={`${API_BASE}/credentials/${result.credential.credential_id}/file`}
+                          href={`${API_BASE}/credentials/${result.credential.credential_id}/file${authToken ? `?token=${encodeURIComponent(authToken)}` : ""}`}
                           download={result.credential.original_filename}
                           className="btn btn-sm btn-secondary"
                           title="Download original artifact"
@@ -1748,14 +2034,14 @@ export function App() {
                     <div className="doc-preview-body">
                       {result.credential.file_type === "PDF" || result.credential.mime_type?.toLowerCase().includes("pdf") ? (
                         <iframe
-                          src={`${API_BASE}/credentials/${result.credential.credential_id}/file#toolbar=1&navpanes=0`}
+                          src={`${API_BASE}/credentials/${result.credential.credential_id}/file${authToken ? `?token=${encodeURIComponent(authToken)}` : ""}#toolbar=1&navpanes=0`}
                           className="doc-preview-frame"
                           title={`Preview: ${result.credential.original_filename}`}
                         />
                       ) : (
                         <div className="doc-preview-img-wrap">
                           <img
-                            src={`${API_BASE}/credentials/${result.credential.credential_id}/file`}
+                            src={`${API_BASE}/credentials/${result.credential.credential_id}/file${authToken ? `?token=${encodeURIComponent(authToken)}` : ""}`}
                             alt={result.credential.original_filename}
                             className="doc-preview-img"
                           />
@@ -2193,6 +2479,223 @@ export function App() {
             )}
           </>
         )}
+
+        {/* ==========================================
+            TAB: AUTHENTICATION & ACCESS CONTROL
+        ========================================== */}
+        {activeTab === "auth" && (
+          <div className="tab-content auth-workspace">
+            <div className="auth-view-grid">
+              {/* Left Column: Sign In or Active Session */}
+              <div className="auth-card session-box">
+                <div className="auth-card-header">
+                  <div className={`auth-card-icon ${authToken ? "green" : "blue"}`}>
+                    <Icon name={authToken ? "shield-check" : "lock"} size={22} />
+                  </div>
+                  <div>
+                    <h3>{authToken ? "Administrator Session Active" : "Administrator Sign In"}</h3>
+                    <p>
+                      {authToken
+                        ? "Full administrative authority over repository documents, vaults, and intelligence"
+                        : "Enter administrator credentials to browse database records and manage vaults"}
+                    </p>
+                  </div>
+                </div>
+
+                {authToken ? (
+                  <div className="auth-active-session">
+                    <div className="session-status-badge">
+                      <span className="dot green" />
+                      <span>Authenticated via Signed HMAC-SHA256 JWT Token</span>
+                    </div>
+
+                    <div className="session-details-table">
+                      <div className="session-row">
+                        <span className="lbl">Role</span>
+                        <span className="val"><span className="nav-tag green">{currentUser?.role || "ADMIN"}</span></span>
+                      </div>
+                      <div className="session-row">
+                        <span className="lbl">Admin Identity</span>
+                        <span className="val"><strong>{currentUser?.email || currentUser?.username || "admin@blockintel.com"}</strong></span>
+                      </div>
+                      <div className="session-row">
+                        <span className="lbl">Display Name</span>
+                        <span className="val">{currentUser?.name || "System Administrator"}</span>
+                      </div>
+                      <div className="session-row">
+                        <span className="lbl">Token Expiry</span>
+                        <span className="val font-mono">24 Hours (Rolling Session)</span>
+                      </div>
+                      <div className="session-row">
+                        <span className="lbl">Repository Access</span>
+                        <span className="val">{credentialsList.length} Ingested Documents Accessible</span>
+                      </div>
+                    </div>
+
+                    <div className="session-actions">
+                      <button
+                        className="btn btn-danger-outline w-full"
+                        onClick={() => handleLogout("Signed out of Administrator session.")}
+                      >
+                        <Icon name="log-out" size={14} />
+                        <span>Sign Out of Administrator Console</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <form className="auth-login-form" onSubmit={handleLogin}>
+                    <div className="form-group">
+                      <label>Administrator Username or Email</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="admin@blockintel.com"
+                        value={authUsername}
+                        onChange={(e) => setAuthUsername(e.target.value)}
+                        autoFocus
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label>Password</label>
+                      <input
+                        type="password"
+                        className="form-input"
+                        placeholder="••••••••••••••••"
+                        value={authPassword}
+                        onChange={(e) => setAuthPassword(e.target.value)}
+                      />
+                    </div>
+
+                    {authError && (
+                      <div className="modal-error-banner">
+                        <Icon name="alert-triangle" size={15} />
+                        <span>{authError}</span>
+                      </div>
+                    )}
+
+                    <div className="form-actions-stacked">
+                      <button type="submit" className="btn btn-primary w-full" disabled={authLoading}>
+                        {authLoading ? (
+                          <>
+                            <span className="spinner" />
+                            <span>Authenticating...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Icon name="lock" size={14} />
+                            <span>Sign In as Administrator</span>
+                          </>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        className="btn btn-secondary w-full quick-demo-btn-row"
+                        onClick={handleQuickFillDemo}
+                      >
+                        <Icon name="key" size={14} />
+                        <span>Quick Demo: Auto-Fill Default Admin Credentials</span>
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+
+              {/* Right Column: RBAC Security Matrix */}
+              <div className="auth-card rbac-box">
+                <div className="auth-card-header">
+                  <div className="auth-card-icon teal">
+                    <Icon name="layers" size={22} />
+                  </div>
+                  <div>
+                    <h3>Role-Based Access Control (RBAC) Architecture</h3>
+                    <p>Strictly enforced across FastAPI REST guards, database queries, and UI components</p>
+                  </div>
+                </div>
+
+                <div className="rbac-table-container">
+                  <table className="rbac-table">
+                    <thead>
+                      <tr>
+                        <th>Platform Capability</th>
+                        <th>Public Verifier Mode</th>
+                        <th>Administrator Mode</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>
+                          <strong>Check Document for Tampering</strong>
+                          <div className="sub">POST /credentials/verify-document</div>
+                        </td>
+                        <td><span className="status-pill green">Allowed (Open)</span></td>
+                        <td><span className="status-pill green">Allowed</span></td>
+                      </tr>
+                      <tr>
+                        <td>
+                          <strong>Browse Stored Credentials List</strong>
+                          <div className="sub">GET /credentials</div>
+                        </td>
+                        <td><span className="status-pill red">Restricted (401)</span></td>
+                        <td><span className="status-pill green">Full Access</span></td>
+                      </tr>
+                      <tr>
+                        <td>
+                          <strong>Stream Vault Artifacts (Visual Inspection)</strong>
+                          <div className="sub">GET /credentials/{'{id}'}/file</div>
+                        </td>
+                        <td><span className="status-pill red">Restricted (401)</span></td>
+                        <td><span className="status-pill green">Full Access</span></td>
+                      </tr>
+                      <tr>
+                        <td>
+                          <strong>Upload / Ingest New Official Documents</strong>
+                          <div className="sub">POST /credentials/upload</div>
+                        </td>
+                        <td><span className="status-pill red">Restricted (401)</span></td>
+                        <td><span className="status-pill green">Full Access</span></td>
+                      </tr>
+                      <tr>
+                        <td>
+                          <strong>Permanently Delete Credentials</strong>
+                          <div className="sub">DELETE /credentials/{'{id}'}</div>
+                        </td>
+                        <td><span className="status-pill red">Restricted (401)</span></td>
+                        <td><span className="status-pill green">Full Access</span></td>
+                      </tr>
+                      <tr>
+                        <td>
+                          <strong>Run Multi-Modal Intelligence Pipelines</strong>
+                          <div className="sub">POST /credentials/{'{id}'}/complete</div>
+                        </td>
+                        <td><span className="status-pill red">Restricted (401)</span></td>
+                        <td><span className="status-pill green">Full Access</span></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="security-highlights">
+                  <div className="highlight-item">
+                    <Icon name="shield-check" size={16} />
+                    <div>
+                      <strong>Complete Database Privacy</strong>
+                      <p>Public verifiers can never list, view, or scrape stored documents. They only test files in their physical or digital possession.</p>
+                    </div>
+                  </div>
+                  <div className="highlight-item">
+                    <Icon name="cpu" size={16} />
+                    <div>
+                      <strong>Cryptographic Tamper-Proofing</strong>
+                      <p>Dual-layer SHA-256 byte-hash matching and local ledger proof-of-existence verify document integrity in real time.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ==========================================
@@ -2531,6 +3034,112 @@ export function App() {
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==========================================
+          Administrator Authentication Modal
+      ========================================== */}
+      {isAuthModalOpen && (
+        <div className="modal-overlay" onClick={() => !authLoading && setIsAuthModalOpen(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "460px" }}>
+            <div className="modal-header">
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <div className="modal-icon-circle blue">
+                  <Icon name="lock" size={20} />
+                </div>
+                <div>
+                  <h2>Administrator Authentication</h2>
+                  <p>Sign in to access and manage repository documents</p>
+                </div>
+              </div>
+              <button
+                className="modal-close-btn"
+                disabled={authLoading}
+                onClick={() => setIsAuthModalOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            <form onSubmit={handleLogin}>
+              <div className="modal-body" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <div className="auth-modal-notice">
+                  <Icon name="info" size={15} />
+                  <span>
+                    Only authorized enterprise administrators can access, browse, upload, or alter credentials in the database.
+                  </span>
+                </div>
+
+                <div className="form-group">
+                  <label>Administrator Username / Email</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="admin@blockintel.com"
+                    value={authUsername}
+                    onChange={(e) => setAuthUsername(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Password</label>
+                  <input
+                    type="password"
+                    className="form-input"
+                    placeholder="••••••••••••••••"
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                  />
+                </div>
+
+                {authError && (
+                  <div className="modal-error-banner">
+                    <Icon name="alert-triangle" size={15} />
+                    <span>{authError}</span>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  className="quick-demo-btn"
+                  onClick={handleQuickFillDemo}
+                >
+                  <Icon name="key" size={13} />
+                  <span>Quick Demo: Auto-Fill Default Admin Credentials</span>
+                </button>
+              </div>
+
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={authLoading}
+                  onClick={() => setIsAuthModalOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={authLoading}
+                >
+                  {authLoading ? (
+                    <>
+                      <span className="spinner" />
+                      <span>Authenticating...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Icon name="lock" size={14} />
+                      <span>Sign In as Admin</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

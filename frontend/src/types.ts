@@ -175,7 +175,6 @@ export interface UniversalVerificationResponse {
   registered_hash?: string | null;
   match_confidence: number;
   match_reason: string;
-  details: string;
   diff_indicators: string[];
   blockchain_registered: boolean;
   contract_address?: string | null;
@@ -186,3 +185,15 @@ export interface UniversalVerificationResponse {
   verified_at: string;
 }
 
+export interface AuthUser {
+  username: string;
+  email?: string | null;
+  role: string;
+  name: string;
+}
+
+export interface AuthTokenResponse {
+  access_token: string;
+  token_type: string;
+  user: AuthUser;
+}

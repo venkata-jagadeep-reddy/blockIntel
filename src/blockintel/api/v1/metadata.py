@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from blockintel.api.deps import get_db
+from blockintel.api.deps import get_db, require_admin
 from blockintel.services.metadata_service import MetadataStructuralService
 from blockintel.domain.metadata import MetadataDto, MetadataResponse
 
@@ -12,11 +12,12 @@ meta_service = MetadataStructuralService()
     "/{credential_id}/metadata",
     response_model=MetadataResponse,
     status_code=status.HTTP_200_OK,
-    summary="Extract document metadata, fonts, embedded objects, and structural layout"
+    summary="Extract document metadata, fonts, embedded objects, and structural layout [Admin Only]"
 )
 async def extract_metadata(
     credential_id: str,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _admin: dict = Depends(require_admin),
 ):
     record = await meta_service.extract_metadata_and_structure(credential_id, db)
     return MetadataResponse(
@@ -36,11 +37,12 @@ async def extract_metadata(
 @router.get(
     "/{credential_id}/metadata",
     response_model=MetadataResponse,
-    summary="Retrieve extracted metadata and structural layout"
+    summary="Retrieve extracted metadata and structural layout [Admin Only]"
 )
 async def get_metadata(
     credential_id: str,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _admin: dict = Depends(require_admin),
 ):
     record = await meta_service.get_metadata(credential_id, db)
     return MetadataResponse(

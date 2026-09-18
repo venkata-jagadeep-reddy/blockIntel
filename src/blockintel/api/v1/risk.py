@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from blockintel.api.deps import get_db
+from blockintel.api.deps import get_db, require_admin
 from blockintel.domain.enums import Severity
 from blockintel.domain.risk import RiskAssessmentResponse, RiskSignalDto
 from blockintel.services.risk_service import AuthenticityRiskService
@@ -26,11 +26,19 @@ def response_for(credential_id: str, assessment) -> RiskAssessmentResponse:
     )
 
 
-@router.post("/{credential_id}/risk", response_model=RiskAssessmentResponse)
-async def assess_risk(credential_id: str, db: AsyncSession = Depends(get_db)):
+@router.post("/{credential_id}/risk", response_model=RiskAssessmentResponse, summary="Assess credential risk [Admin Only]")
+async def assess_risk(
+    credential_id: str,
+    db: AsyncSession = Depends(get_db),
+    _admin: dict = Depends(require_admin),
+):
     return response_for(credential_id, await service.assess_credential(credential_id, db))
 
 
-@router.get("/{credential_id}/risk", response_model=RiskAssessmentResponse)
-async def get_risk(credential_id: str, db: AsyncSession = Depends(get_db)):
+@router.get("/{credential_id}/risk", response_model=RiskAssessmentResponse, summary="Get credential risk [Admin Only]")
+async def get_risk(
+    credential_id: str,
+    db: AsyncSession = Depends(get_db),
+    _admin: dict = Depends(require_admin),
+):
     return response_for(credential_id, await service.get_assessment(credential_id, db))

@@ -31,8 +31,31 @@ async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
         yield session
         await session.rollback()
 
+@pytest.fixture(scope="function")
+def admin_token() -> str:
+    from blockintel.core.auth import create_access_token
+    return create_access_token({
+        "sub": "admin@blockintel.com",
+        "role": "ADMIN",
+        "name": "System Administrator",
+    })
+
 @pytest_asyncio.fixture(scope="function")
-async def async_client(test_engine, db_session) -> AsyncGenerator[AsyncClient, None]:
+async def async_client(test_engine, db_session, admin_token) -> AsyncGenerator[AsyncClient, None]:
+    app = create_app()
+
+    async def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    transport = ASGITransport(app=app)
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    async with AsyncClient(transport=transport, base_url="http://testserver", headers=headers) as client:
+        yield client
+
+@pytest_asyncio.fixture(scope="function")
+async def public_client(test_engine, db_session) -> AsyncGenerator[AsyncClient, None]:
     app = create_app()
 
     async def override_get_db():

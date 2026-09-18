@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from blockintel.api.deps import get_db
+from blockintel.api.deps import get_db, require_admin
 from blockintel.domain.skill import SkillEvidenceDto, SkillProfileDto, SkillProfileResponse
 from blockintel.services.skill_service import SkillIntelligenceService
 
@@ -23,13 +23,21 @@ def profile(skill) -> SkillProfileDto:
     )
 
 
-@router.post("/{credential_id}/skills", response_model=SkillProfileResponse)
-async def extract_skills(credential_id: str, db: AsyncSession = Depends(get_db)):
+@router.post("/{credential_id}/skills", response_model=SkillProfileResponse, summary="Extract skills [Admin Only]")
+async def extract_skills(
+    credential_id: str,
+    db: AsyncSession = Depends(get_db),
+    _admin: dict = Depends(require_admin),
+):
     skills = await service.extract_and_evaluate(credential_id, db)
     return SkillProfileResponse(credential_id=credential_id, skills=[profile(skill) for skill in skills])
 
 
-@router.get("/{credential_id}/skills", response_model=SkillProfileResponse)
-async def get_skills(credential_id: str, db: AsyncSession = Depends(get_db)):
+@router.get("/{credential_id}/skills", response_model=SkillProfileResponse, summary="Get skills [Admin Only]")
+async def get_skills(
+    credential_id: str,
+    db: AsyncSession = Depends(get_db),
+    _admin: dict = Depends(require_admin),
+):
     skills = await service.get_skills(credential_id, db)
     return SkillProfileResponse(credential_id=credential_id, skills=[profile(skill) for skill in skills])

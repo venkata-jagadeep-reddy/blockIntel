@@ -27,6 +27,13 @@ class Settings(BaseSettings):
     CONTRACT_ADDRESS: str = "0x0000000000000000000000000000000000000000"
     BLOCKCHAIN_CHAIN_ID: int = 1337
 
+    # Authentication & Authorization (Admin RBAC)
+    JWT_SECRET_KEY: str = "blockintel-enterprise-auth-secret-key-2026-secure"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
+    ADMIN_USERNAME: str = "admin@blockintel.com"
+    ADMIN_PASSWORD: str = "Admin@BlockIntel2026!"
+
     # Authenticity Risk Thresholds (Objective 2)
     RISK_THRESHOLD_LOW: int = 30
     RISK_THRESHOLD_HIGH: int = 70

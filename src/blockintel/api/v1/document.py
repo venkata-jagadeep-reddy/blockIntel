@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from blockintel.api.deps import get_db
+from blockintel.api.deps import get_db, require_admin
 from blockintel.services.document_service import DocumentProcessorService
 from blockintel.infrastructure.database.models import ExtractedPageModel
 from blockintel.domain.document import (
@@ -16,12 +16,13 @@ doc_service = DocumentProcessorService()
     "/{credential_id}/process",
     response_model=DocumentProcessingResponse,
     status_code=status.HTTP_200_OK,
-    summary="Trigger text extraction and OCR for an uploaded credential"
+    summary="Trigger text extraction and OCR for an uploaded credential [Admin Only]"
 )
 async def process_credential_document(
     credential_id: str,
     force_ocr: bool = Query(False, description="Force OCR even if native text is present"),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _admin: dict = Depends(require_admin),
 ):
     extraction = await doc_service.process_credential(
         credential_id=credential_id,
@@ -43,11 +44,12 @@ async def process_credential_document(
 @router.get(
     "/{credential_id}/extraction",
     response_model=DocumentDetailResponse,
-    summary="Get full extracted text, pages, and OCR confidences"
+    summary="Get full extracted text, pages, and OCR confidences [Admin Only]"
 )
 async def get_credential_extraction(
     credential_id: str,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _admin: dict = Depends(require_admin),
 ):
     extraction = await doc_service.get_extraction(credential_id, db)
     

@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from blockintel.api.deps import get_db
+from blockintel.api.deps import get_db, require_admin
 from blockintel.api.v1.risk import response_for as risk_response
 from blockintel.api.v1.skills import profile as skill_profile
 from blockintel.domain.blockchain import BlockchainRegistrationResponse, IntegritySummaryDto
@@ -28,8 +28,12 @@ blockchain = BlockchainService()
 skills = SkillIntelligenceService()
 
 
-@router.post("/{credential_id}/complete", response_model=CredentialIntelligenceResponse)
-async def complete_phase_one(credential_id: str, db: AsyncSession = Depends(get_db)):
+@router.post("/{credential_id}/complete", response_model=CredentialIntelligenceResponse, summary="Run complete pipeline [Admin Only]")
+async def complete_phase_one(
+    credential_id: str,
+    db: AsyncSession = Depends(get_db),
+    _admin: dict = Depends(require_admin),
+):
     credential = await ingestion.get_credential(credential_id, db)
     await db.refresh(credential, ["extraction", "metadata_record", "blockchain_record"])
     extraction = credential.extraction or await documents.process_credential(credential_id, db)
