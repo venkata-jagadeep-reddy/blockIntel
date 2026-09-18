@@ -972,14 +972,6 @@ export function App() {
             )}
           </button>
           <button
-            className={`nav-item ${activeTab === "json" ? "active" : ""} ${!authToken ? "locked" : ""}`}
-            onClick={() => handleTabClick("json")}
-          >
-            <Icon name={authToken ? "code" : "lock"} size={17} />
-            <span>Raw Response JSON</span>
-            {!authToken && <span className="nav-tag lock-tag">Admin</span>}
-          </button>
-          <button
             className={`nav-item ${activeTab === "auth" ? "active" : ""}`}
             onClick={() => setActiveTab("auth")}
           >
@@ -2454,29 +2446,6 @@ export function App() {
                 </div>
               </div>
             )}
-
-            {/* ==========================================
-                TAB: RAW RESPONSE JSON
-            ========================================== */}
-            {activeTab === "json" && (
-              <div className="tab-content json-tab">
-                <div className="section-intro">
-                  <div className="intro-text">
-                    <h2>Raw API Response Payload</h2>
-                    <p>Live JSON returned by <code>POST /api/v1/credentials/{result.credential.credential_id}/complete</code>.</p>
-                  </div>
-                  <div className="json-actions">
-                    <CopyButton text={JSON.stringify(result, null, 2)} label="Copy JSON Payload" />
-                  </div>
-                </div>
-
-                <div className="card json-viewer-card">
-                  <pre className="raw-json-code">
-                    {JSON.stringify(result, null, 2)}
-                  </pre>
-                </div>
-              </div>
-            )}
           </>
         )}
 
@@ -2671,6 +2640,14 @@ export function App() {
                         </td>
                         <td><span className="status-pill red">Restricted (401)</span></td>
                         <td><span className="status-pill green">Full Access</span></td>
+                      </tr>
+                      <tr>
+                        <td>
+                          <strong>Backend Raw Intelligence JSON API</strong>
+                          <div className="sub">GET /credentials/{'{id}'}/raw-json</div>
+                        </td>
+                        <td><span className="status-pill red">Restricted (401)</span></td>
+                        <td><span className="status-pill green">Full Access (Backend Only)</span></td>
                       </tr>
                     </tbody>
                   </table>

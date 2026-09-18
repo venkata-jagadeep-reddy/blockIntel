@@ -106,3 +106,25 @@ async def complete_phase_one(
         metadata=meta_dto,
         blockchain_registration=blockchain_dto,
     )
+
+
+@router.get(
+    "/{credential_id}/raw-json",
+    response_model=CredentialIntelligenceResponse,
+    summary="Retrieve complete raw intelligence dossier JSON [Admin Only]"
+)
+@router.get(
+    "/{credential_id}/complete",
+    response_model=CredentialIntelligenceResponse,
+    summary="Retrieve complete intelligence dossier JSON [Admin Only]"
+)
+async def get_raw_intelligence_json(
+    credential_id: str,
+    db: AsyncSession = Depends(get_db),
+    _admin: dict = Depends(require_admin),
+):
+    """
+    Backend endpoint serving the full raw JSON intelligence dossier for a credential.
+    Allows administrators and API consumers to query the unformatted raw response JSON directly.
+    """
+    return await complete_phase_one(credential_id, db, _admin)
