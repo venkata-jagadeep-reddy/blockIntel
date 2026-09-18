@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     RISK_THRESHOLD_HIGH: int = 70
 
     # OCR & Document Processing (Objective 1B)
-    TESSERACT_CMD: str = "/home/jagadeep-reddy/blockintel/bin/tesseract"
+    TESSERACT_CMD: str = str(BASE_DIR / "bin" / "tesseract")
     MIN_NATIVE_TEXT_CHARS: int = 50
     OCR_DPI: int = 150
 

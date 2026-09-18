@@ -72,7 +72,7 @@ Modern organizations, universities, and background verification agencies struggl
 ### 3.1. Ingestion & Storage Vault Security
 - **File Validation:** Incoming files are strictly inspected using binary magic-byte signatures (`%PDF-` for PDFs, `PNG` for PNGs, `ÿØÿ` for JPEGs). File extensions alone are never trusted.
 - **Deduplication:** Artifacts are indexed by their exact SHA-256 hash. Uploading an identical document returns the existing ledger record without duplicating storage.
-- **Vault Storage:** Files are stored in `data/vault/` with POSIX permissions `0o600` (owner read/write only). Paths are resolved strictly within the sandbox to defend against directory traversal attacks.
+- **Vault Storage:** Files are stored in `backend/data/vault/` with POSIX permissions `0o600` (owner read/write only). Paths are resolved strictly within the sandbox to defend against directory traversal attacks.
 
 ### 3.2. Document Processing & OCR Engine
 - **Dual-Engine Extraction:** 
@@ -124,9 +124,9 @@ Accessible without needing prior credential selection:
 - **Grounded Evidence:** Every detected skill is linked to the exact page number, text excerpt, character offset, and source classification.
 - **Evaluations:** Assigns competency (0–100) and confidence (0–100) scores with clear rationales.
 
-### 3.8. Permanent Document Deletion (Data Lifecycle)
+#### 3.8. Permanent Document Deletion (Data Lifecycle)
 - Clean deletion via UI or API (`DELETE /api/v1/credentials/{credential_id}`).
-- Cascades across all 11 database tables and purges the physical file from `data/vault/`.
+- Cascades across all 11 database tables and purges the physical file from `backend/data/vault/`.
 
 ---
 
@@ -138,15 +138,14 @@ Accessible without needing prior credential selection:
 | **ORM & Database** | SQLAlchemy 2.0 (Async), SQLite 3, `aiosqlite` |
 | **Document Processing** | PyMuPDF (`fitz`), Tesseract OCR (`pytesseract`), Pillow |
 | **Validation & Serialization** | Pydantic v2, Pydantic-Settings |
-| **Smart Contracts & Web3** | Solidity `^0.8.20`, EVM-compatible, Deterministic Local Ledger Provider |
-| **Frontend UI** | React 18, TypeScript, Vite, Custom CSS Design System |
-| **Testing** | Pytest, `pytest-asyncio`, HTTPX |
+| **Frontend Framework** | React 18, TypeScript, Vite, Tailwind-grade Vanilla CSS |
+| **Smart Contracts** | Solidity `^0.8.20`, Minimal Byte32 Hash Registry |
 
 ---
 
-## 5. Database Schema & Architecture
+## 5. Database Architecture & Schema
 
-The database is an embedded SQLite store located at `data/blockintel.db`, consisting of **11 relational tables** configured with cascading orphan deletion:
+The database is an embedded SQLite store located at `backend/data/blockintel.db`, consisting of **11 relational tables** configured with cascading orphan deletion:
 
 ```
 ┌───────────────────────────────────────────────────────────┐
@@ -325,7 +324,7 @@ The web client is an enterprise-grade dark/light dashboard accessible at `http:/
 
 ### 8.2. Backend Setup
 ```bash
-cd /home/jagadeep-reddy/blockintel
+cd /home/jagadeep-reddy/blockintel/backend
 
 # Create and activate virtual environment
 python3 -m venv .venv
@@ -354,10 +353,10 @@ npm run dev
 
 ### 8.4. Running the Test Suite
 ```bash
-cd /home/jagadeep-reddy/blockintel
+cd /home/jagadeep-reddy/blockintel/backend
 .venv/bin/pytest -v
 ```
-All **42 unit and integration tests** execute in under 6 seconds, validating:
+All **52 unit and integration tests** execute in under 6 seconds, validating:
 - Magic-byte security and path traversal defense
 - Duplicate detection and local vault storage
 - PyMuPDF and Tesseract OCR pipelines

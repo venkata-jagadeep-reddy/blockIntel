@@ -22,6 +22,7 @@ Recruitment features (job matching, ranking, recruiter dashboards, and recommend
 ### 1. Backend API
 
 ```bash
+cd backend
 python3 -m venv .venv
 .venv/bin/python -m ensurepip --upgrade
 .venv/bin/python -m pip install -e .
@@ -43,6 +44,7 @@ Open `http://localhost:5173` to access the real-time trust and intelligence dash
 Run tests with:
 
 ```bash
+cd backend
 .venv/bin/python -m pytest -q
 ```
 
