@@ -2,6 +2,9 @@
 
 BlockIntel processes credential artifacts without altering them and produces a Phase 1 trust-and-intelligence profile.
 
+> **Full Technical & Operational Documentation:**
+> For comprehensive system architecture, database schema, REST API specification, universal tamper detection mechanics, and technical viva/interview Q&A, see [`PROJECT_DOCUMENTATION.md`](./PROJECT_DOCUMENTATION.md).
+
 ## What is implemented
 
 1. Secure PDF, PNG, and JPEG ingestion with magic-byte validation, SHA-256 duplicate detection, and restricted local-vault storage.
@@ -35,7 +38,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173` to explore the interactive dashboard, switch between 4 comprehensive demo presets (Verified Full-Stack, Cloud Architect, Tampered Cybersec, Scanned Transcript), run live artifact verification, and upload custom credentials.
+Open `http://localhost:5173` to access the real-time trust and intelligence dashboard. You can ingest credential artifacts (PDF, PNG, JPEG), switch between stored credentials in the database, inspect evidence-grounded skills and forensic metadata, and verify file integrity in real time with the backend verification API.
 
 Run tests with:
 

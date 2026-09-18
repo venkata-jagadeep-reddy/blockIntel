@@ -35,25 +35,39 @@ async def complete_phase_one(credential_id: str, db: AsyncSession = Depends(get_
     extraction = credential.extraction or await documents.process_credential(credential_id, db)
     credential = await ingestion.get_credential(credential_id, db)
     await db.refresh(credential, ["metadata_record", "blockchain_record"])
-    if credential.metadata_record is None:
-        await metadata.extract_metadata_and_structure(credential_id, db)
+
+    meta_record = credential.metadata_record
+    if meta_record is None:
+        meta_record = await metadata.extract_metadata_and_structure(credential_id, db)
+
     assessment = await risk.assess_credential(credential_id, db)
     await blockchain.register_hash(credential_id, db)
     _, _, matches, integrity_status = await blockchain.verify_stored_artifact(credential_id, db)
-    extracted_skills = await skills.extract_and_evaluate(credential_id, db)
+
+    extracted_skills = []
+    if extraction and extraction.text_available:
+        try:
+            extracted_skills = await skills.extract_and_evaluate(credential_id, db)
+        except Exception as e:
+            logger.warning(f"Skill extraction skipped for '{credential_id}': {e}")
+            extracted_skills = []
+
     credential = await ingestion.get_credential(credential_id, db)
     await db.refresh(credential, ["metadata_record", "blockchain_record"])
 
+    if meta_record is None and credential.metadata_record:
+        meta_record = credential.metadata_record
+
     meta_dto = None
-    if credential.metadata_record:
+    if meta_record:
         meta_dto = MetadataDto(
-            author=credential.metadata_record.author,
-            producer=credential.metadata_record.producer,
-            creator=credential.metadata_record.creator,
-            creation_date=credential.metadata_record.creation_date,
-            modification_date=credential.metadata_record.modification_date,
-            raw_metadata=credential.metadata_record.raw_metadata or {},
-            structural_info=credential.metadata_record.structural_info or {},
+            author=meta_record.author,
+            producer=meta_record.producer,
+            creator=meta_record.creator,
+            creation_date=meta_record.creation_date,
+            modification_date=meta_record.modification_date,
+            raw_metadata=meta_record.raw_metadata or {},
+            structural_info=meta_record.structural_info or {},
         )
 
     blockchain_dto = None

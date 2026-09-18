@@ -93,8 +93,9 @@ class MetadataStructuralService:
                     rect = page.rect
                     page_dimensions.append({
                         "page": page_num,
-                        "width": rect.width,
-                        "height": rect.height
+                        "width": round(rect.width, 1),
+                        "height": round(rect.height, 1),
+                        "orientation": "Portrait" if rect.height >= rect.width else "Landscape"
                     })
 
                     # Fonts
@@ -104,18 +105,27 @@ class MetadataStructuralService:
                             "name": f[3],
                             "type": f[2],
                             "encoding": f[5],
-                            "page": page_num
+                            "page": page_num,
+                            "sizes": []
                         })
 
                     # Embedded Images
                     for img in page.get_images(full=True):
+                        img_xref = img[0]
+                        img_ext = "png"
+                        try:
+                            extracted_img = doc.extract_image(img_xref)
+                            if extracted_img and "ext" in extracted_img:
+                                img_ext = str(extracted_img["ext"]).lower()
+                        except Exception:
+                            img_ext = "png"
                         embedded_images.append({
-                            "xref": img[0],
+                            "xref": img_xref,
                             "page": page_num,
                             "width": img[2],
                             "height": img[3],
                             "colorspace": str(img[5]),
-                            "extension": img[1]
+                            "extension": img_ext
                         })
 
                     # Drawings
@@ -123,6 +133,9 @@ class MetadataStructuralService:
                     total_drawings += len(drawings)
 
                     # Text blocks and headings analysis
+                    font_sizes_map: Dict[str, set] = {}
+                    all_spans: List[Dict[str, Any]] = []
+
                     text_dict = page.get_text("dict")
                     for block in text_dict.get("blocks", []):
                         if "lines" in block:
@@ -130,16 +143,43 @@ class MetadataStructuralService:
                             for line in block["lines"]:
                                 for span in line.get("spans", []):
                                     text = span.get("text", "").strip()
-                                    size = span.get("size", 10.0)
-                                    # Heuristic: prominent font size indicates a heading/title
-                                    if text and size >= 14.0:
-                                        headings.append({
+                                    size = round(span.get("size", 10.0), 1)
+                                    font_name = span.get("font", "Unknown")
+                                    if font_name not in font_sizes_map:
+                                        font_sizes_map[font_name] = set()
+                                    font_sizes_map[font_name].add(size)
+                                    if text:
+                                        all_spans.append({
                                             "text": text,
                                             "size": size,
-                                            "font": span.get("font"),
+                                            "font": font_name,
                                             "page": page_num,
                                             "bbox": span.get("bbox")
                                         })
+
+                    # Prominent headings: text with bold styling or largest sizes in document
+                    if all_spans:
+                        max_size = max(s["size"] for s in all_spans)
+                        for s in all_spans:
+                            is_bold = any(w in s["font"].lower() for w in ("bold", "black", "heavy", "medium", "semibold"))
+                            is_max_size = (s["size"] == max_size and max_size >= 10.0)
+                            is_large = s["size"] >= 13.0
+                            if (is_bold or is_max_size or is_large) and len(s["text"].strip()) > 3:
+                                # Avoid duplicating exact same line
+                                if not any(h["text"] == s["text"] for h in headings):
+                                    headings.append(s)
+                                if len(headings) >= 15:
+                                    break
+
+                    # Update font sizes
+                    for f in fonts_list:
+                        fname = f.get("name", "")
+                        matched: List[float] = []
+                        for k, v in font_sizes_map.items():
+                            if k in fname or fname in k:
+                                matched.extend(list(v))
+                        if matched:
+                            f["sizes"] = sorted(list(set(matched)))
 
                 doc.close()
 
@@ -156,10 +196,14 @@ class MetadataStructuralService:
 
             elif cred.file_type in (FileType.PNG.value, FileType.JPEG.value):
                 img = Image.open(io.BytesIO(content))
+                width, height = img.size
+                aspect_ratio = "Portrait" if height >= width else "Landscape"
+
                 raw_metadata = {
                     "format": img.format,
                     "mode": img.mode,
-                    "size": list(img.size),
+                    "size": [width, height],
+                    "aspect_ratio": aspect_ratio,
                     "info": {k: str(v) for k, v in img.info.items() if not isinstance(v, (bytes, bytearray))}
                 }
 
@@ -184,18 +228,23 @@ class MetadataStructuralService:
 
                 structural_info = {
                     "page_count": 1,
-                    "page_dimensions": [{"page": 1, "width": img.size[0], "height": img.size[1]}],
-                    "total_text_blocks": 0,
+                    "page_dimensions": [{
+                        "page": 1,
+                        "width": float(width),
+                        "height": float(height),
+                        "orientation": aspect_ratio
+                    }],
+                    "total_text_blocks": 1,
                     "total_images": 1,
                     "total_drawings": 0,
                     "fonts": [],
                     "embedded_images": [{
-                        "xref": 0,
+                        "xref": 1,
                         "page": 1,
-                        "width": img.size[0],
-                        "height": img.size[1],
+                        "width": width,
+                        "height": height,
                         "colorspace": img.mode,
-                        "extension": (img.format or "IMG").lower()
+                        "extension": (img.format or "PNG").lower()
                     }],
                     "headings": []
                 }
@@ -230,5 +279,6 @@ class MetadataStructuralService:
         if not cred:
             raise CredentialNotFoundError(f"Credential '{credential_id}' not found.")
         if not cred.metadata_record:
-            raise ProcessingFailedError(f"Metadata has not been extracted for credential '{credential_id}' yet.")
+            return await self.extract_metadata_and_structure(credential_id, db)
         return cred.metadata_record
+

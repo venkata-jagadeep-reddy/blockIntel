@@ -52,6 +52,28 @@ async def get_credential(
     return CredentialDetailResponse.model_validate(cred)
 
 @router.get(
+    "/{credential_id}/file",
+    summary="Stream raw credential artifact bytes for in-browser visual preview"
+)
+async def get_credential_file(
+    credential_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    from pathlib import Path
+    from fastapi import Response
+    from blockintel.infrastructure.storage.local_vault import LocalVaultStorage
+
+    cred = await ingestion_service.get_credential(credential_id, db)
+    vault = LocalVaultStorage()
+    file_bytes = vault.read_file(Path(cred.storage_path).name)
+    return Response(
+        content=file_bytes,
+        media_type=cred.mime_type,
+        headers={"Content-Disposition": f"inline; filename=\"{cred.original_filename}\""}
+    )
+
+
+@router.get(
     "",
     response_model=CredentialListResponse,
     summary="List all ingested credentials"
@@ -66,3 +88,19 @@ async def list_credentials(
         total=total,
         items=[CredentialDetailResponse.model_validate(item) for item in items]
     )
+
+
+@router.delete(
+    "/{credential_id}",
+    summary="Delete a credential and its associated intelligence and vault files"
+)
+async def delete_credential(
+    credential_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    await ingestion_service.delete_credential(credential_id, db)
+    return {
+        "status": "deleted",
+        "credential_id": credential_id,
+        "message": f"Credential '{credential_id}' and all associated records deleted successfully."
+    }

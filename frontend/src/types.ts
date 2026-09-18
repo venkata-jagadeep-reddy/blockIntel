@@ -139,11 +139,50 @@ export interface IntelligenceResult {
   blockchain_registration?: BlockchainRegistration | null;
 }
 
-export interface DemoPreset {
+export interface CredentialListItem {
   id: string;
-  title: string;
-  subtitle: string;
-  badge: string;
-  riskLevel: RiskLevel;
-  result: IntelligenceResult;
+  credential_id: string;
+  original_filename: string;
+  file_type: string;
+  mime_type: string;
+  file_size_bytes: number;
+  sha256_hash: string;
+  status: string;
+  created_at: string;
+  updated_at?: string;
 }
+
+export interface IntegrityVerificationResponse {
+  credential_id: string;
+  submitted_hash: string;
+  registered_hash?: string | null;
+  hash_match: boolean;
+  integrity_status: IntegrityStatus;
+  message: string;
+  verified_at: string;
+}
+
+export interface UniversalVerificationResponse {
+  is_present: boolean;
+  verdict: "ORIGINAL" | "TAMPERED" | "NOT_PRESENT";
+  is_tampered: boolean;
+  is_original: boolean;
+  submitted_filename: string;
+  submitted_hash: string;
+  submitted_size_bytes: number;
+  matched_credential_id?: string | null;
+  matched_filename?: string | null;
+  registered_hash?: string | null;
+  match_confidence: number;
+  match_reason: string;
+  details: string;
+  diff_indicators: string[];
+  blockchain_registered: boolean;
+  contract_address?: string | null;
+  transaction_hash?: string | null;
+  block_number?: number | null;
+  network_id?: string | null;
+  registered_at?: string | null;
+  verified_at: string;
+}
+

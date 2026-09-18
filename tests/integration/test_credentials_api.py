@@ -86,3 +86,71 @@ async def test_get_nonexistent_credential_returns_400(async_client):
     response = await async_client.get("/api/v1/credentials/CRD-NONEXISTENT")
     assert response.status_code == 400
     assert response.json()["error"] == "CredentialNotFoundError"
+
+
+@pytest.mark.asyncio
+async def test_verify_document_universal_api(async_client):
+    # 1. Upload original
+    files_orig = {"file": ("cert_exam.pdf", io.BytesIO(SAMPLE_PDF_BYTES), "application/pdf")}
+    up_res = await async_client.post("/api/v1/credentials/upload", files=files_orig)
+    assert up_res.status_code == 201
+    cred_id = up_res.json()["credential_id"]
+
+    # 2. Universal Verify: Original
+    v_orig = await async_client.post(
+        "/api/v1/credentials/verify-document",
+        files={"file": ("cert_exam.pdf", io.BytesIO(SAMPLE_PDF_BYTES), "application/pdf")}
+    )
+    assert v_orig.status_code == 200
+    orig_data = v_orig.json()
+    assert orig_data["is_present"] is True
+    assert orig_data["verdict"] == "ORIGINAL"
+    assert orig_data["is_tampered"] is False
+    assert orig_data["matched_credential_id"] == cred_id
+
+    # 3. Universal Verify: Tampered (same name, altered bytes)
+    tampered_bytes = SAMPLE_PDF_BYTES + b"MODIFIED_EXTRA_CONTENT"
+    v_tamp = await async_client.post(
+        "/api/v1/credentials/verify-document",
+        files={"file": ("cert_exam.pdf", io.BytesIO(tampered_bytes), "application/pdf")}
+    )
+    assert v_tamp.status_code == 200
+    tamp_data = v_tamp.json()
+    assert tamp_data["is_present"] is True
+    assert tamp_data["verdict"] == "TAMPERED"
+    assert tamp_data["is_tampered"] is True
+    assert tamp_data["matched_credential_id"] == cred_id
+    assert len(tamp_data["diff_indicators"]) > 0
+
+    # 4. Universal Verify: Not Present (unseen file)
+    unseen_bytes = b"%PDF-1.4\n1 0 obj\n<< /Title (Brand New Unseen File) >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF"
+    v_new = await async_client.post(
+        "/api/v1/credentials/verify-document",
+        files={"file": ("totally_new_unseen.pdf", io.BytesIO(unseen_bytes), "application/pdf")}
+    )
+    assert v_new.status_code == 200
+    new_data = v_new.json()
+    assert new_data["is_present"] is False
+    assert new_data["verdict"] == "NOT_PRESENT"
+    assert new_data["is_tampered"] is False
+    assert new_data["matched_credential_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_delete_credential_api(async_client):
+    # Upload credential
+    files = {"file": ("temp_to_delete.pdf", io.BytesIO(SAMPLE_PDF_BYTES), "application/pdf")}
+    up_res = await async_client.post("/api/v1/credentials/upload", files=files)
+    assert up_res.status_code == 201
+    cred_id = up_res.json()["credential_id"]
+
+    # Delete credential
+    del_res = await async_client.delete(f"/api/v1/credentials/{cred_id}")
+    assert del_res.status_code == 200
+    assert del_res.json()["status"] == "deleted"
+
+    # Verify not found anymore
+    get_res = await async_client.get(f"/api/v1/credentials/{cred_id}")
+    assert get_res.status_code == 400
+    assert get_res.json()["error"] == "CredentialNotFoundError"
+

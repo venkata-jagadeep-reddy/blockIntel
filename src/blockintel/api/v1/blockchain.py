@@ -4,11 +4,33 @@ from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from blockintel.api.deps import get_db
-from blockintel.domain.blockchain import BlockchainRegistrationResponse, IntegrityVerificationResponse
+from blockintel.domain.blockchain import (
+    BlockchainRegistrationResponse,
+    IntegrityVerificationResponse,
+    UniversalVerificationResponse,
+)
 from blockintel.services.blockchain_service import BlockchainService
 
 router = APIRouter(prefix="/credentials", tags=["Artifact Integrity"])
 service = BlockchainService()
+
+
+@router.post(
+    "/verify-document",
+    response_model=UniversalVerificationResponse,
+    summary="Universal document presence and tamper verification across all documents in database"
+)
+async def verify_universal_document(
+    file: UploadFile = File(..., description="Document file (PDF, PNG, JPEG) to check against all stored documents"),
+    db: AsyncSession = Depends(get_db),
+):
+    content = await file.read()
+    return await service.verify_document_against_all(
+        content,
+        file.filename or "uploaded_document",
+        db
+    )
+
 
 
 @router.post("/{credential_id}/register", response_model=BlockchainRegistrationResponse)

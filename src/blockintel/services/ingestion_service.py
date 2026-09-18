@@ -110,3 +110,18 @@ class IngestionService:
         )
         items = list(query.scalars().all())
         return total, items
+
+    async def delete_credential(self, credential_id: str, db: AsyncSession) -> bool:
+        """Deletes credential, vault artifact file, and cascades all associated intelligence records."""
+        from pathlib import Path
+        cred = await self.get_credential(credential_id, db)
+
+        # Remove physical file from vault if present
+        if cred.storage_path:
+            storage_filename = Path(cred.storage_path).name
+            self.vault.delete_file(storage_filename)
+
+        # Delete database record (cascading all child relations)
+        await db.delete(cred)
+        await db.commit()
+        return True

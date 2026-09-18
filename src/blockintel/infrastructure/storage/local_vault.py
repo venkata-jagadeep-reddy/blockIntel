@@ -37,3 +37,14 @@ class LocalVaultStorage:
     def file_exists(self, storage_filename: str) -> bool:
         safe_path = self._resolve_safe_path(storage_filename)
         return safe_path.exists()
+
+    def delete_file(self, storage_filename: str) -> bool:
+        """Deletes raw credential file from vault safely."""
+        try:
+            safe_path = self._resolve_safe_path(storage_filename)
+            if safe_path.exists():
+                safe_path.unlink()
+                return True
+            return False
+        except Exception:
+            return False
